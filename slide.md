@@ -6,7 +6,6 @@ paginate: true
 backgroundColor: #fff
 backgroundImage: url('https://marp.app/assets/hero-background.svg')
 
-
 ---
 # go ctx & err
 
@@ -44,7 +43,7 @@ client, err := spanner.NewClient(ctx, "projects/foo/instances/bar/databases/zoo"
 ```
 
 ---
-## Context とは何なのか？
+## Go の並行処理パターン - Context
  
 - Go 製サーバーは各リクエストを独自ゴルーチンで処理する
 - 一連のゴルーチンはリクエスト固有値にアクセスする必要ある
@@ -53,22 +52,22 @@ client, err := spanner.NewClient(ctx, "projects/foo/instances/bar/databases/zoo"
 
 これらの解決手段として context パッケージが用意されている
 
-cf. https://go.dev/blog/context
+cf. [Go Concurrency Patterns: Context](https://go.dev/blog/context)
 
 
 ---
-## Context の責務
+## 責務 - Context
 
 - キャンセルの伝達
 - リクエスト固有値の伝達
 
-cf. https://pkg.go.dev/context#pkg-overview
+cf. [Standard library > context - Overview](https://pkg.go.dev/context#pkg-overview)
 
 
 ---
-## Context の責務
+## 責務 - Context
 
-デッドラインもタイムアウトもキャンセルのラッパー関数なので、本スライドでは一括してキャンセル処理として扱う
+デッドラインもタイムアウトもキャンセルをラップした処理なので、本スライドでは一括してキャンセル処理として扱う
 
 ```go
 func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
@@ -85,18 +84,26 @@ func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
 ```
 
 ---
-## Context の責務ではない事
+## 責務ではない事 - Context
 
-- 関数のオプショナル引数 ( python でいうところのキーワード引数 ) ではない
+- 関数のオプショナル引数 ( ≒ python のキーワード引数 ) ではない
 - WithValue をオプショナル引数用途で使うと関数の実行に必要なシグネチャが分からなくなる
 
-cf. https://pkg.go.dev/context#pkg-overview
+NG )
+
+```golang
+func rename(ctx context.Context) error {
+	name := ctx.Value("name")
+}
+```
+
+cf. [Standard library > context - Overview](https://pkg.go.dev/context#pkg-overview)
 
 
 ---
-## Context の責務ではない事
+## 責務ではない事 - Context
 
-- オプショナル引数が必要なら FOP ( Functional Option Pattern ) を検討する
+- オプショナル引数が必要なら Functional Option Pattern ( FOP ) の採用を検討する
 
 ```go
 options := []option.ClientOption{
@@ -108,7 +115,24 @@ client, err := spanner.NewClient(ctx, dbName, options...)
 FOP も乱用するとシグネチャが分からなくなるので、必須パラメータを FOP にしたりしない事
 
 ---
-## Context のインターフェース
+## データ構造 - Context
+
+```go
+type valueCtx struct {
+	Context
+}
+```
+
+- 隣接リストで実装されている
+- 値の参照は、子から親のコンテキストを参照可能
+- キャンセル処理の伝達は、親から子へのみ行われる
+	- 親がキャンセルされた → 子もキャンセルされる
+	- 子がキャンセルされた → 親はキャンセルされない
+
+cf. [Goのcontext.Contextで学ぶ有向グラフと実装](https://future-architect.github.io/articles/20210629a/)
+
+---
+## インターフェース - Context
 
 ```go
 type Context interface {
@@ -127,44 +151,80 @@ type Context interface {
 
 
 ---
-## Context でキャンセルされた場合の処理フロー
+## 動作確認 - Context
 
-- [Goのcontext.Contextで学ぶ有向グラフと実装](https://future-architect.github.io/articles/20210629a/)
-	- 伝達は親から子へのみ行われる
-		- 親がキャンセルされた → 子もキャンセルされる
-		- 子がキャンセルされた → 親はキャンセルされない
+- ケース 1. 直列の場合
+
+```
+% go run cmd/ctx_cancel_1/main.go
+canceled -> 3
+canceled -> 2
+```
+
+- ケース 2. 木構造の場合
+
+```
+% go run cmd/ctx_cancel_2/main.go
+canceled -> 1-2
+canceled -> 1-1
+```
 
 
 ---
-## Context の伝達に使われるチャンネル
+## チャンネル - Context
 
-紐解こうとすると `c10k問題` というネットワークプログラミング史における課題を知る必要がある
+なぜ Go では並列処理の信号伝達にチャンネルを使うのか？
 
-- 世界で最も普及した Apache サーバーが抱える問題
+紐解くと `C10K問題` という世界で最も普及した Apache サーバーが抱える問題に行き当たる
 
 
 ---
-## Context の伝達に使われるチャンネル
+## C10K問題 - Context
 
-- クライアントが 10,000 台を超えるとプロセス数の上限に達する
+- クライアントが 10,000 台を超えるとプロセス数上限に達する
   - Apache は 1 リクエスト 1 プロセス ( Apache 方式 )
 	- 32bit Linux ではプロセス数上限が 32,767 であるため、それ以上リクエストを捌けなくなる
 
 - コンテキストスイッチのコストが増大
-	- 1 CPU が複数プロセスを並行処理するため、それまでの処理内容を保存して新しい処理の内容を復元すること
+	- CPU が複数プロセスを並行処理するため、それまでの処理内容を保存して新しい処理の内容を復元すること
 	- Apache 方式ではリクエスト増＝プロセス増であるため、コンテキストスイッチのコストが無視できなくなる
 
 
 ---
-## Context の伝達に使われるチャンネル
+## C10K問題 - Context
 
 これらの問題はシングルプロセス・マルチスレッドにすればかなり軽減されるらしいが、それでもファイルディスクリプタ上限の問題が残る
 
-cf. https://udon-yuya.hatenablog.com/entry/2020/09/03/233227
+cf. [【勉強メモ】C10K問題【マルチプロセス・マルチスレッド】](https://udon-yuya.hatenablog.com/entry/2020/09/03/233227)
 
 
 ---
-## 並行プログラミング
+## 並行プログラミング - Context
 
-c10k 問題に限らず、有限リソースであるプロセス・スレッドを活用するため、モダンなプログラミング言語ではランタイムに吸収する仕組みが入っており、Go では goroutine と channel による `CSP ( Communicating Sequential Process ) モデル`が採用されている
+C10K問題に代表される有限なプロセス・スレッドの活用問題に対し、モダンなプログラミング言語ではスレッドを効率的に利用する機構が用意されている
+
+Go は開発者である Rob Pike 氏が Communicating Sequential Processes ( CSP ) モデルが基になっていると述べており、ゴルーチンとチャンネルによって実現されている
+
+cf. [Origins of Go Concurrency style by Rob Pike](https://youtu.be/3DtUzH3zoFo?t=130)
+
+
+---
+## channel or async/await - Context
+
+並行プログラミングの処理系としては様々な言語で async/await が採用されているが、Go の開発者たちはデメリットも多いと考え CSP に基づく方法が採用された
+
+( 公式な情報元へは辿り着けなかったので各自でご判断ください )
+
+cf. [Goはなぜasync/awaitを採用しなかったの？](https://zenn.dev/nobonobo/articles/9a9f12b27bfde9#go%E3%81%AF%E3%81%AA%E3%81%9Casync%2Fawait%E3%82%92%E6%8E%A1%E7%94%A8%E3%81%97%E3%81%AA%E3%81%8B%E3%81%A3%E3%81%9F%E3%81%AE%EF%BC%9F)
+
+
+---
+## まとめ - Context
+
+- キャンセルの伝達
+  - 並行処理を行う上でスレッドを有効活用し、かつ、シンプルに表現できる CSP スタイルが基となり、ゴルーチン＆チャンネルによって実現されているœ
+- リクエスト固有値の伝達
+	- グローバルな値 ( DB コネクションなど ) の受け渡しには使わない
+
+#### 責務を理解して適切に取り扱おう
 
