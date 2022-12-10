@@ -30,7 +30,6 @@ func main() {
 
 		<-ctx1.Done()
 		fmt.Println("canceled -> 1")
-
 	}(ctx1)
 
 	time.Sleep(time.Second)

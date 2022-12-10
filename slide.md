@@ -27,7 +27,7 @@ _footer: 'mutaguchi'
 ---
 ## アジェンダ
 
-- テーマの選定理由
+- テーマ選定理由
 - Context
 - Error
 
@@ -35,10 +35,10 @@ _footer: 'mutaguchi'
 ---
 ## テーマの選定理由
 
-(作図する)
-
-- 聞いてくれている方にも
-- 自身にとっても学びになる
+- 自分と聴講者両者にとってのためになるテーマにしたい
+- 何となく使っている箇所の基礎を固めるという内容なら上記を満たせるのでは？
+	- Context
+	- Error
 
 
 ---
@@ -48,9 +48,7 @@ _footer: 'mutaguchi'
 
 cf. [コンテキスト（情報工学）](https://ja.wikipedia.org/wiki/%E3%82%B3%E3%83%B3%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88_(%E6%83%85%E5%A0%B1%E5%B7%A5%E5%AD%A6))
 
-タスク ( = func ) を実行する上で使用されるデータの最小セットということでこの用語が採用されているものの、コンテキストスイッチといったスレッド周りで用いられる本来のコンテキストとは意味合いは異なる
-
-( 言葉は時代とともに変化していくもの )
+タスク ( = func ) を実行する上で使用されるデータの最小セットということでこの用語が採用されているものの、コンテキストスイッチといったスレッド周りで用いられるコンテキストとは概念が少し異なる
 
 
 ---
@@ -76,7 +74,7 @@ cf. [Standard library > context - Overview](https://pkg.go.dev/context#pkg-overv
 
 
 ---
-## 責務 - Context
+## 責務 ( 補足 ) - Context
 
 デッドラインもタイムアウトもキャンセルをラップした処理なので、本スライドでは一括してキャンセル処理として扱う
 
@@ -104,8 +102,9 @@ ctx := context.Background()
 client, err := spanner.NewClient(ctx, "projects/foo/instances/bar/databases/zoo")
 ```
 
-I/O が発生するところで並行処理の制御を目的として用いる
-( 違うケースがあったら教えて下さい )
+I/O ( 主にネットワーク ) が発生するところで並行処理の制御を目的として用いる
+
+※ もし異なるケースがあったら教えて下さい
 
 
 ---
@@ -115,10 +114,10 @@ I/O が発生するところで並行処理の制御を目的として用いる
 - WithValue をオプショナル引数用途で使うと関数の実行に必要なシグネチャが分からなくなる
 
 NG )
-
 ```golang
-func rename(ctx context.Context) error {
-	name := ctx.Value("name")
+var name string
+func rename(ctx context.Context) {
+	name = ctx.Value("name")
 }
 ```
 
@@ -137,7 +136,7 @@ options := []option.ClientOption{
 client, err := spanner.NewClient(ctx, dbName, options...)
 ```
 
-FOP も乱用するとシグネチャが分からなくなるので、必須パラメータでは使わないこと
+FOP も乱用するとシグネチャが分からなくなるので、必須パラメータ ( 上記コードでいう dbName ) を渡す用途では使わない
 
 
 ---
@@ -170,7 +169,7 @@ type Context interface {
 	// Deadline は、この Context がキャンセルされる時刻（がもしあれば）を返す
 	Deadline() (deadline time.Time, ok bool)
 	// Value は、key に関連する値を返し、無い場合は nil を返す
-	Value(key any) any
+	Value(key interface{}) interface{}
 }
 ```
 
@@ -202,7 +201,7 @@ canceled -> 1-1
 
 なぜ Go では並列処理の信号伝達にチャンネルを使うのか？
 
-紐解くと `C10K問題` という世界で最も普及した Apache サーバーが抱える問題に行き当たる
+紐解こうとすると `C10K問題` という世界で最も普及した Apache サーバーが抱える問題が参考になる
 
 
 ---
@@ -212,17 +211,14 @@ canceled -> 1-1
   - Apache は 1 リクエスト 1 プロセス ( Apache 方式 )
 	- OS のプロセス数上限によってリクエストが捌けなくなる
 		- 32bit Linux では 32,767 が上限
-- コンテキストスイッチのコストが増大
-	- CPU が複数プロセスを並行処理するため、それまでの処理内容を保存して新しい処理の内容を復元すること
-	- Apache 方式ではリクエスト増＝プロセス増であるため、コンテキストスイッチのコストが無視できなくなる
 
 
 ---
 ## C10K問題 - Context
 
-これらの問題はシングルプロセス・マルチスレッドにすればかなり軽減されるらしいが、それでもファイルディスクリプタ上限の問題が残る
-
-cf. [【勉強メモ】C10K問題【マルチプロセス・マルチスレッド】](https://udon-yuya.hatenablog.com/entry/2020/09/03/233227)
+- コンテキストスイッチのコストが増大
+	- 複数のプロセスが 1 つの CPU を共有できるように、コンテキストを保存したり復元したりする過程のこと
+	- Apache 方式ではリクエスト増＝プロセス増であるため、コンテキストスイッチのコストが無視できなくなる
 
 
 ---
@@ -238,7 +234,7 @@ cf. [Origins of Go Concurrency style by Rob Pike](https://youtu.be/3DtUzH3zoFo?t
 ---
 ## channel or async/await - Context
 
-並行プログラミングの処理系としては様々な言語で async/await が採用されているが、Go の開発者たちはデメリットも多いと考え CSP に基づく方法が採用された
+並行プログラミングの処理系としては様々な言語で async/await が採用されているが、Go の開発者たちはデメリットも多いと考え CSP に基づく方法を採用した
 
 cf. [Goはなぜasync/awaitを採用しなかったの？](https://zenn.dev/nobonobo/articles/9a9f12b27bfde9#go%E3%81%AF%E3%81%AA%E3%81%9Casync%2Fawait%E3%82%92%E6%8E%A1%E7%94%A8%E3%81%97%E3%81%AA%E3%81%8B%E3%81%A3%E3%81%9F%E3%81%AE%EF%BC%9F)
 
@@ -259,36 +255,283 @@ cf. [Goはなぜasync/awaitを採用しなかったの？](https://zenn.dev/nobo
 ---
 # Error
 
+Go の開発者である Rob Pike 氏が 2015 年に行った講演資料に
+
+> Go is simple, at least compared to established languages.
+> Simplicity has many facets.
+> Simplicity is complicated.
+
+cf. https://go.dev/talks/2015/simplicity-is-complicated.slide#4
+
+という一節がある
+
+
+---
+# Error
+
+- シンプル ≠ 簡単
+- シンプル = 複雑
+
+シンプルなコードにするのは複雑で難しいが、シンプルであれば理解者が増える、理解者が増えるメリットは大きい
+
+Go を書く時は常にシンプルである事を意識しなさいという開発者からのメッセージ
+
+
+---
+# Error
+
+エラーハンドリングは try catch などの例外処理は無く、早期リターンスタイル
+
+```go
+i, err := strconv.Atoi("42")
+if err != nil {
+    fmt.Printf("couldn't convert number: %v\n", err)
+    return
+}
+fmt.Println("Converted integer:", i)
+```
+
+cf. [A Tour of Go](https://go-tour-jp.appspot.com/methods/19)
+
+
+---
+# Error
+
+このようにエラーを無視する事は出来るが、よほどの理由がない限りはやっては駄目
+
+```go
+i, _ := strconv.Atoi("42")
+```
+
+エラーが発生しうる関数は、呼び出した実装者が責任をもってハンドリングを行うのが Go という言語
+
+※ コンパイルエラーは発生しないが静的解析では指摘される
+
 
 ---
 # Panic - Error
 
+![bg right:50% 100%](image/panic.png)
+
 異常系として `panic` もあるが、どう使い分けるのが適切か？
 
+標準パッケージでは 1,540 箇所で使われている
+
+
+---
+# Panic - Error
+
 - panic
-  - runtime error
+	- アプリケーションの継続が困難な場合にプログラムを異常終了させる目的で使う
+- error
+	- アプリケーションの継続は可能だが正常ではないケースにおいて、呼び出し元に判断を委ねる目的で使う
 
 
 ---
 # Must - Error
 
+![bg right:50% 100%](image/must.png)
 
----
-# 判定 - Error
+内部で panic を起こす関数に付ける接頭辞
 
-
----
-# Is/As - Error
+標準パッケージの公開関数では 8 箇所で定義されている
 
 
 ---
-# Wrap/Unwrap - Error
+# Must - Error
+
+`template` パッケージ
+
+> エラーが nil 以外である場合にパニックを起こすヘルパーで、変数の初期化で使うことを意図
+
+```golang
+// Must is a helper that wraps a call to a function returning (*Template, error)
+// and panics if the error is non-nil. It is intended for use in variable initializations
+// such as
+//
+//	var t = template.Must(template.New("name").Parse("html"))
+func Must(t *Template, err error) *Template {
+```
+
+変数の初期化
 
 
 ---
-# スタックトレース - Error
+# Must - Error
 
-https://future-architect.github.io/articles/20200523/
+`regexp` パッケージ
+
+> コンパイルされた正規表現を保持するグローバル変数の安全な初期化を簡素化
+
+```golang
+// MustCompile is like Compile but panics if the expression cannot be parsed.
+// It simplifies safe initialization of global variables holding compiled regular
+// expressions.
+func MustCompile(str string) *Regexp {
+```
+
+グローバル変数の初期化 / 簡素化
+
+
+---
+# Must - Error
+
+`syscall` パッケージ
+
+> ロード操作に失敗するとパニックを発生
+
+```golang
+// MustLoadDLL is like LoadDLL but panics if load operation fails.
+func MustLoadDLL(name string) *DLL {
+```
+
+
+---
+# Must - Error
+
+|定義|用途|サーバーなら？|
+|:--|:--|:--|
+|panic|アプリケーションの継続が困難|起動処理が失敗|
+|Must|グローバルな値の初期化に使う命名パターン|サーバーはグローバルな値|
+
+サーバーの起動処理はコネクション生成などによって冗長化するが、標準パッケージでも使われている Must という命名パターンを使うことでシンプルに書ける
+
+
+---
+# Must - Error
+
+例 ) gRPC サーバーのルーティング処理
+
+```golang
+healthSvc, err := service.NewHealth(dep)
+if err != nil {
+	return fmt.Errorf("failed to health: %w", err)
+}
+grpc_health_v1.RegisterHealthServer(s.srv, healthSvc)
+
+debugSvc, err := service.NewDebug(dep)
+if err != nil {
+	return fmt.Errorf("failed to debug: %w", err)
+}
+api.RegisterDebugServiceServer(s.srv, debugSvc)
+```
+
+
+---
+# Must - Error
+
+```golang
+user_v1.RegisterAccountServiceServer(s.srv, grpc_server.MustAccount(s.dep))
+user_v1.RegisterEmailServiceServer(s.srv, grpc_server.MustEmail(s.dep))
+```
+
+- サーバー起動時にエラーが発生
+	- 起動できない → アプリケーションの継続が困難 → Must でシンプルに書ける
+- リクエスト時にエラーが発生
+	- メインではないゴルーチンで起こる事なので継続可能 → エラーハンドリングをしっかりやる
+
+
+---
+# エラートラッキング - Error
+
+ローカル開発環境以外ではデバッガが使えないためスタックトレースを欲しいと思った事はあるか？
+
+Go でもエラーハンドリングでラッピングを行う事で可能
+
+
+---
+# エラートラッキング - Error
+
+## 標準パッケージ ( 1.13 >= )
+
+```go
+❯ go run cmd/err_trace_std/main.go
+wrapped error: original error
+```
+
+※ 発生フレーム ( 発生箇所や行数など ) の情報は含まない
+
+
+---
+# エラートラッキング - Error
+
+## github.com/pkg/errors パッケージ
+
+```go
+❯ go run cmd/err_trace_pkg/main.go
+original error
+wrapped error
+main.main.func1
+  /Users/t-mutaguchi/Documents/Repositories/study-group-202212/cmd/err_trace_pkg/main.go:16
+main.main
+  /Users/t-mutaguchi/Documents/Repositories/study-group-202212/cmd/err_trace_pkg/main.go:20
+```
+
+※ 現在は Public Archive でメンテナンスされていない
+※ メンテナンスが要らないほど安定しているとも言える
+
+
+---
+# エラートラッキング - Error
+
+## golang.org/x/xerrors パッケージ
+
+```go
+❯ go run cmd/err_trace_x/main.go
+wrapped error:
+    main.main.func1
+        /Users/t-mutaguchi/Documents/Repositories/study-group-202212/cmd/err_trace_x/main.go:15
+  - original error:
+    main.main.func1.1
+        /Users/t-mutaguchi/Documents/Repositories/study-group-202212/cmd/err_trace_x/main.go:12
+```
+
+※ Go 1.13 に一部機能が取り込まれて役目を終えた
+
+
+---
+### 補足 1
+
+- 2017 年、Go プロジェクトチームは Go 2 に向けた基本計画を発表
+	- Go 1 のエコシステムを崩すことは避けるべき、Go 1 に Go 2 の機能をゆっくり取り組んでいく
+	- Go 1.20 のリリースを Go 2.0 に置き換える、など破壊的な変更は行わずスムーズなリリースを目指す
+- 2019/01、Go 2 に向け errors パッケージへ以下の[提案](https://go.googlesource.com/proposal/+/master/design/29934-error-values.md)がなされた
+	- Wrapping ( Is, As / Wrap, Unwrap )
+		- ( Wrapping を前提とした ) Stack Frames ( Stack Trace )
+
+
+---
+### 補足 2
+
+- 2019/01 - 04 で Go プロジェクトチームとコミュニティ間で[様々な議論](https://github.com/golang/go/issues/29934)が行われたものの、エラーに別のエラーを内包することで発生する複雑さに対して満足な解決策は出せなかった
+	- 結構衝突しているので興味があればぜひ
+- 2019/05、コードフリーズにより Go 1.13 には Wrapping に関する機能のみメインツリーに取り込まれる事が決定した
+- 2019/09、Go 1.13 により Wrapping に関する機能のみリリースされた
+
+
+---
+### 補足 3
+
+- Go という言語は後方互換性をとても大事にしている言語
+	- 発表から 10 年以上、メジャーバージョンが上がっていない
+- golang.org/x パッケージは Go プロジェクトの一部ではあるもののメインツリーではなく、緩やかな互換性の元で行われる研究開発的な位置付け
+
+
+---
+# エラートラッキング - Error
+
+ということで Go のエラーは Go プロジェクトチームとコミュニティでも対立があって、腫れ物扱いになっているのが現状
+
+ただ、サービスの商用環境ではそんな Go 裏事情はどうでも良く、意図しないエラーが発生してしまった場合は素早く原因を突き止めて解決したいところ
+
+
+---
+
+そんな需要から [Sentry](https://sentry.io/welcome/) というエラートラッキングの人気サービスがある
+
+
+![bg right:100%](image/sentry.png)
+
 
 
 ---
@@ -296,38 +539,31 @@ https://future-architect.github.io/articles/20200523/
 
 https://evanli.github.io/Github-Ranking/Top100/Go.html
 
-|Name|Star|pkg/errors|xerrors|
-|:--|:--|:--|:--|
-|[go](https://github.com/golang/go)|106k||
-
-
----
-# バグトラッキング - Error
-
-https://tech.jxpress.net/entry/sentry-go-handling
-
-
----
-# 戦略 - Error
-
-フローチャート
-
-- 十分にユニットテストは実施出来ているか？
-	- バグは極小なので
-- デバッグトレースは必要か？
+https://github.com/kubernetes/kubernetes/blob/0ac956ff2bef9c84b17d4b9cae2cffe71d5c6386/vendor/k8s.io/klog/v2/klog.go#L1473
 
 
 ---
 # まとめ - Error
 
 - 言語レベルにおけるルールは以下のみ
-	- `if err != nil`
+	- `err != nil`
 	- `errors.Is, errors.As`
-- 以下は環境に依るもの
+- 以下は標準パッケージで解決できないのでチームで話し合う
 	- スタックトレース
 	- バグトラッキング
-- 環境に合わせてチームで話し合うのが正解
 
+
+---
+
+# まとめ
+
+- context
+	- 並行処理には CSP スタイルが採用されている
+- error
+	- エラーハンドリングは早期リターンスタイルが強制される
+	- try catch といった例外処理は無い
+
+他の言語に慣れていると不便に感じる事はあるかもしれないが、これらは Go のコードを例外無くシーケンシャルにしたいという開発者の思想によるもの、上から下に読めば誰でも処理の流れが追えるようになっている
 
 ---
 # Simple, Poetic, Pithy
