@@ -50,7 +50,7 @@ _footer: 'mutaguchi'
 
 cf. [コンテキスト（情報工学）](https://ja.wikipedia.org/wiki/%E3%82%B3%E3%83%B3%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88_(%E6%83%85%E5%A0%B1%E5%B7%A5%E5%AD%A6))
 
-タスク ( = func ) を実行する上で使用されるデータの最小セットということでこの用語が採用されているものの、コンテキストスイッチといったスレッド周りで用いられるコンテキストとは概念が少し異なる
+タスク ( = リクエスト ) を実行する上で使用されるデータの最小セットということでこの用語が採用されているものの、コンテキストスイッチといったスレッド周りで用いられるコンテキストとは概念が少し異なる
 
 
 ---
@@ -97,14 +97,14 @@ func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
 ---
 ## 使い方 - Context
 
-リクエスト ( I/O ) が発生する箇所では Go の慣習的に第一引数として渡す
+リクエストが発生する箇所では Go の慣習的に第一引数として渡す
 
 ```go
 ctx := context.Background()
 client, err := spanner.NewClient(ctx, "projects/foo/instances/bar/databases/zoo")
 ```
 
-I/O ( 主にネットワーク ) が発生するところで並行処理の制御を目的として用いる
+リクエスト ( ネットワーク I/O ) が発生するところにおいて並行処理の制御を目的として用いる
 
 ※ もし異なるケースがあったら教えて下さい
 
